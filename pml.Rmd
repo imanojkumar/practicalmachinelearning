@@ -1,0 +1,206 @@
+---
+title: "Coursera - Practical Machine Learning"
+author: "Manoj Kumar"
+date: "Sunday, Friday 13, 2015"
+output: html_document
+---
+
+### 1. Setting the Default Working Directory
+
+```{r, echo=TRUE}
+
+# Now there are two ways I can commit this project on my github account
+# 1. I can use an  R Project in RStudio and Through Version Control, I can directly commit to github
+#    which is very easy for me but I dont know about peers if they are aware of this method
+# 2. Other Method is that I set my working directory to the cloned-from-github-on-my-laptop folder 
+#    in which first I have to create a "New Repository" on github account, and then using github desktop
+#    version I clone that repository on my laptop and then set it as my working directory for R. 
+
+# For ease I will use 2nd option.
+
+# Therefore, let us set the working directory as clonned git repository, which on my laptop is
+setwd("C:/Users/Manu/Documents/GitHub/practicalmachinelearning/")
+
+```
+
+### 2. Loading All the Required Library
+
+```{r,echo=TRUE, message=FALSE}
+
+# Before downloading the data and use it for the project,
+# lets load the required libraries and create environment
+library(Hmisc)
+library(caret)
+library(randomForest)
+library(foreach)
+library(doParallel)
+
+```
+
+### 3. Downloading Files in the Default Folder
+
+```{r, echo=TRUE}
+#The training data for this project are available here: 
+# https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+# And The test data are available here: 
+# https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+# Download the training data from the URL as mentioned above, to the destination (default) folder
+# download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "./pml-training.csv")
+
+# Similarly, download the test data from the URL as mentioned above, to the destination (default) folder
+# download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "./pml-testing.csv")
+
+```
+
+### 4. Setting Default Global Options
+
+```{r, echo=TRUE}
+
+# Set Default Options
+set.seed(2048)
+options(warn = -1)
+
+```
+
+### 5. Loading Training and Test Data Sets
+
+```{r, echo=TRUE}
+# Read training data and wherever we have "#DIV/0!" in the dataset, set them as "NA"
+TrainingData = read.csv("pml-training.csv", na.strings = c("#DIV/0!"))
+
+# Similarly, read test data and do the operation as above
+TestData = read.csv("pml-testing.csv", na.strings = c("#DIV/0!"))
+
+```
+
+### 6. Cleaning Datasets to make Workable
+
+```{r, echo=TRUE}
+# Dimensions of the training data
+dim(TrainingData)
+# Check the structure of the training data
+str(TrainingData)
+# Summary of the training data
+summary(TrainingData)
+
+# Dimensions of the test data
+dim(TestData)
+# Check the structure of the test data
+str(TestData)
+# Summary of the test data
+summary(TestData)
+
+# Lets make the character values to numeric in Training Dataset
+for(i in c(8:ncol(TrainingData)-1)) {
+TrainingData[, i] = as.numeric(as.character(TrainingData[, i]))
+}
+
+# And also in Test Dataset
+for(i in c(8:ncol(TestData)-1)) {
+TestData[, i] = as.numeric(as.character(TestData[, i]))
+}
+
+# We noticed that there are Some columns which were mostly blank (& contain only NAs). 
+# Considering that These columns do not contribute to the prediction, at least in my exercise, 
+# I, therefore, choose only to include columns with complete cases and remove the non-contributing columns. 
+# Also I choose to remove columns such as "user name"", "timestamps", "windows" ect. from the dataset. 
+newtrainingdata <- colnames(TrainingData[colSums(is.na(TrainingData)) == 0])[-(1:7)]
+NewTrainingData <- TrainingData[newtrainingdata]
+
+```
+
+### 7. Looking into Cleaned and Redefined Dataset
+
+```{r, echo=TRUE}
+
+head(NewTrainingData)
+
+```
+
+### 8. Dividing Dataset into Training and Testing Datasets
+
+```{r, echo=TRUE}
+
+# Divide the dataset into 75% Training Set and 25% Test Set
+parttrain <- createDataPartition(y = NewTrainingData$classe, p = 0.75, list = FALSE)
+
+training <- NewTrainingData[parttrain, ]
+
+testing <- NewTrainingData[-parttrain, ]
+
+```
+
+### 9. Using Random Forest and Applying ML
+
+```{r, echo=TRUE}
+
+# Method 1
+# Next in the steps below, I will build 5 random forests with 150 trees each.
+# I will use the powers of "Parallel Processing" in random forests in R to build the model. 
+# This speeds up the overall computing in the system.
+
+# Register "Parallel Processing"
+registerDoParallel()
+
+p <- training[-ncol(training)]
+q <- training$classe
+
+randfor <- foreach(ntree = rep(150, 6), .combine = randomForest::combine, .packages = "randomForest") %dopar% { randomForest(p, q, ntree = ntree) }
+
+
+# Report of Errors in the Training Data
+predictions1 <- predict(randfor, newdata = training)
+confusionMatrix(predictions1, training$classe)
+
+# Report of Errors in the Test Data
+predictions2 <- predict(randfor, newdata = testing)
+confusionMatrix(predictions2, testing$classe)
+
+```
+
+### 10. Conclusion
+
+```{r, echo=TRUE}
+
+# From the above confusion matrix for train and test datasets, we can conlude that the
+# model accuracy is quite high.
+# Upon submission of the results in the assignment, will tell us whether accurate results
+# were obtained or not.
+
+# As of now, we can say....
+# Combined with the high accuracy results from the cross-validation procedure, 
+# it appears as though we have good prediction model.
+
+```
+
+### 11. Generating Results
+
+```{r, echo=TRUE}
+
+# Using the following code from the Coursera assignment details,
+# We can upload the 20 generated 20 files in the default folder 
+# (i.e. default working directory)
+
+pml_write_files = function(x) {
+  n = length(x)
+  for(i in 1:n) {
+    filename = paste0("problem_id_", i, ".txt")
+    write.table(x[i], file = filename, quote = FALSE, row.names = FALSE, col.names = FALSE)
+  }
+}
+
+# Reassigning Test Data file and running prediction
+x <- TestData
+x <- x[newtrainingdata[newtrainingdata != 'classe' ]]
+# Prediction
+answers <- predict(randfor, newdata = x)
+
+# Checking the result of ML on to console
+answers
+
+# Writing 20 files containing the results of ML (will be stored in default directory)
+pml_write_files(answers)
+
+```
